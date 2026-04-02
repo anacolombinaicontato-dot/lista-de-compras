@@ -1,0 +1,14 @@
+# Vercel
+.vercel
+
+# Variáveis de ambiente (NUNCA commitar)
+.env
+.env.local
+.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/

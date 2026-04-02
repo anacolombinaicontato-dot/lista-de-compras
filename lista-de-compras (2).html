@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lista de Compras</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Login Screen */
+#login-screen {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999; flex-direction: column; gap: 16px;
+  font-family: 'DM Sans', sans-serif;
+}
+#login-screen h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.5rem; color: var(--accent); margin-bottom: 8px;
+}
+#login-screen input {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 16px; font-size: 1rem; width: 280px;
+  background: var(--surface); color: var(--text); outline: none;
+}
+#login-screen input:focus { border-color: var(--accent-mid); }
+#login-error { color: var(--danger); font-size: 0.8rem; display: none; }
+#login-loading { color: var(--text-muted); font-size: 0.8rem; display: none; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #F4F1EC;
+  --surface: #FDFAF6;
+  --accent: #2A4D14;
+  --accent-mid: #5A8032;
+  --accent-light: #E6EFD9;
+  --text: #1C1C16;
+  --text-muted: #7C7C6E;
+  --border: #DDD8CC;
+  --danger: #9B3A2A;
+  --danger-light: #F5ECEA;
+  --shadow: 0 1px 6px rgba(0,0,0,0.07);
+  --radius: 12px;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 1rem 0.75rem 4rem;
+}
+
+.container { max-width: 560px; margin: 0 auto; }
+
+header { margin-bottom: 1rem; animation: fadeDown .45s ease both; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--accent); padding-bottom: 0.5rem; }
+header h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.3rem; font-weight: 400;
+  color: var(--accent); letter-spacing: -.02em; line-height: 1;
+}
+.month-select {
+  border: none; background: var(--bg); color: var(--accent);
+  font-family: inherit; font-size: 0.85rem; font-weight: 600;
+  padding: 4px 8px; border-radius: 6px; cursor: pointer; outline: none;
+}
+.btn-small {
+  background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
+  padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 500; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all .2s;
+}
+.btn-small:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent-mid); }
+.btn-danger-small { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn-danger-small:hover { background: var(--danger-light); color: var(--danger); border-color: var(--danger); }
+
+#new-month-picker {
+  display: none; position: absolute; top: 100%; left: 0; background: var(--surface);
+  border: 1px solid var(--border); padding: 8px; border-radius: 8px; box-shadow: var(--shadow);
+  z-index: 10; gap: 8px; align-items: center; margin-top: 5px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex; gap: 4px; margin-bottom: 0.75rem;
+  background: transparent; border: none;
+  padding: 0;
+  animation: fadeDown .45s .05s ease both;
+}
+.tab {
+  flex: none; text-align: center; padding: 6px 16px;
+  font-size: .85rem; font-weight: 500;
+  border-radius: 20px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-muted); cursor: pointer;
+  transition: all .2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.panel { display: none; animation: fadeUp .3s ease both; }
+.panel.active { display: block; }
+
+/* Card */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.75rem;
+  margin-bottom: 1rem; box-shadow: var(--shadow);
+}
+.card h2 { font-size: 0.9rem; font-weight: 500; margin-bottom: 0.5rem; }
+
+/* Add form */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.form-obs { margin-top: 5px; }
+.field label {
+  display: block; font-size: .65rem; font-weight: 500;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 3px;
+}
+.field input {
+  width: 100%;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 10px; font-family: 'DM Sans', sans-serif;
+  font-size: .85rem; background: var(--bg); color: var(--text);
+  outline: none; transition: border-color .2s;
+}
+.field input:focus { border-color: var(--accent-mid); }
+.field input::placeholder { color: var(--text-muted); }
+
+.btn-primary {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 9px; padding: 9px 18px;
+  font-family: 'DM Sans', sans-serif; font-size: .9rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap; transition: background .2s, transform .1s;
+  height: 38px;
+}
+.btn-primary:hover { background: #3a6820; }
+.btn-primary:active { transform: scale(.97); }
+
+/* Summary bar */
+.summary-bar {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.75rem 1rem;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem; box-shadow: var(--shadow);
+}
+.summary-bar p { font-size: .75rem; color: var(--text-muted); margin-bottom: 0; display: inline; margin-right: 8px; }
+.summary-bar strong { font-size: 1rem; font-weight: 600; color: var(--accent); }
+.btn-ghost {
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: 6px; padding: 5px 10px;
+  font-family: 'DM Sans', sans-serif; font-size: .75rem; font-weight: 500;
+  cursor: pointer; transition: all .2s;
+}
+.btn-ghost:hover { background: var(--danger-light); color: var(--danger); border-color: transparent; }
+
+/* Buy list item */
+.buy-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 12px;
+  margin-bottom: 4px; box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 10px;
+  transition: opacity .2s, background .2s;
+}
+.buy-item.done { opacity: .65; }
+
+.buy-item.yellow { background-color: #fff9db; border-color: #ffe066; }
+.buy-item.red { background-color: #fff5f5; border-color: #ffc9c9; }
+.buy-item.gray { background-color: #f1f3f5; border-color: #dee2e6; opacity: 0.55; }
+
+.checkbox {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1.5px solid var(--border); background: transparent;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background .2s, border-color .2s;
+}
+.checkbox:hover { border-color: var(--accent-mid); }
+.checkbox.checked { background: var(--accent); border-color: var(--accent); }
+.checkbox.checked svg { display: block; }
+.checkbox svg { display: none; }
+
+.buy-name { flex: 1; font-size: .9rem; display: flex; flex-direction: column; }
+.buy-name.crossed { text-decoration: line-through; color: var(--text-muted); }
+.buy-obs-input {
+  border: none; background: transparent; 
+  font-family: inherit; font-size: .75rem; color: var(--text-muted);
+  font-style: italic; width: 100%; margin-top: 2px;
+  outline: none; border-bottom: 1px dashed transparent;
+  transition: border-bottom .2s;
+  display: none;
+}
+.buy-obs-input.visible { display: block; }
+.buy-obs-input:focus { border-bottom-color: var(--border); }
+
+.btn-small-icon {
+  padding: 2px; color: var(--border); opacity: 0.6;
+}
+.btn-small-icon:hover { color: var(--accent-mid); background: var(--accent-light); opacity: 1; }
+
+.buy-qty {
+  font-size: 0.8rem; font-weight: 500; color: var(--accent);
+  background: var(--accent-light); border: 1px solid #c5d8aa;
+  border-radius: 6px; padding: 3px 8px; text-align: center; white-space: nowrap;
+}
+
+/* Product + stock item */
+.prod-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px 12px;
+  margin-bottom: 4px; box-shadow: var(--shadow);
+}
+
+.prod-top {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.prod-name { flex: 1; font-size: .95rem; font-weight: 400; }
+
+.btn-icon {
+  background: none; border: none; cursor: pointer; color: var(--border);
+  padding: 3px; border-radius: 6px;
+  transition: color .15s, background .15s; display: inline-flex; align-items: center;
+}
+.btn-icon:hover { color: var(--danger); background: var(--danger-light); }
+
+/* Stock row with inputs */
+.stock-row {
+  display: grid; grid-template-columns: 1fr 1px 1fr 1px 1fr;
+  align-items: center; gap: 6px;
+  background: var(--bg); border-radius: 6px; padding: 3px 8px;
+}
+.sep { width: 1px; height: 18px; background: var(--border); justify-self: center; }
+
+.qty-block { display: flex; align-items: center; gap: 4px; }
+.qty-lbl {
+  font-size: .48rem; font-weight: 700;
+  font-size: .45rem; font-weight: 700;
+  text-transform: uppercase; color: var(--text-muted); white-space: nowrap;
+}
+
+/* Editable number input inside stock row */
+.qty-input {
+  width: 38px; text-align: center;
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 2px; font-family: 'DM Sans', sans-serif;
+  font-size: .8rem; font-weight: 500; background: var(--surface);
+  color: var(--text); outline: none; transition: border-color .2s;
+  appearance: none; -webkit-appearance: none; -moz-appearance: textfield;
+}
+.qty-input:focus { border-color: var(--accent-mid); background: #fff; }
+.qty-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.qty-input:focus { border-color: var(--accent-mid); }
+
+.result-buy { font-size: 1rem; font-weight: 500; color: var(--accent); }
+.result-ok  { font-size: .78rem; font-weight: 400; font-style: italic; color: var(--text-muted); }
+
+.empty { text-align: center; padding: 2.5rem 0; color: var(--text-muted); font-size: .9rem; font-weight: 300; }
+
+@keyframes fadeDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes fadeUp   { from { opacity:0; transform:translateY(8px);  } to { opacity:1; transform:translateY(0); } }
+
+/* Sub-items */
+.sub-item-container {
+  margin-left: 20px;
+  border-left: 2px solid var(--accent-light);
+  padding-left: 12px;
+  margin-top: 8px;
+}
+.subform {
+  display: none;
+  background: var(--bg);
+  padding: 1rem;
+  border-radius: 8px;
+  margin: 10px 0;
+  border: 1px dashed var(--accent-mid);
+}
+.subform.active { display: block; animation: fadeDown .3s ease; }
+.btn-subitem {
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  margin-right: 4px;
+}
+.buy-header {
+  padding: 12px 16px 4px;
+  display: flex;
+  align-items: center;
+}
+.buy-header span {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* New Sub-item styles */
+.buy-item.sub-item, .prod-item.sub-item {
+  padding: 8px 12px;
+  box-shadow: none;
+  background: #faf9f6;
+  border: 1px dashed var(--border);
+  margin-bottom: 4px;
+}
+.buy-item.sub-item .buy-name, .prod-item.sub-item .prod-name { font-size: 0.85rem; }
+.buy-item.sub-item .buy-qty { font-size: 0.85rem; padding: 2px 8px; }
+.buy-item.sub-item .checkbox { width: 18px; height: 18px; }
+.buy-item.sub-item .checkbox svg { transform: scale(0.8); }
+
+.sub-item-container {
+  margin-left: 24px;
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+  margin-bottom: 12px;
+}
+
+.prod-name-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--text);
+  padding: 1px 4px;
+  border-radius: 4px;
+  outline: none;
+  transition: background 0.2s;
+}
+.prod-name-input:focus {
+  background: var(--bg);
+  border-bottom: 1px solid var(--accent-mid);
+}
+
+.buy-section-header {
+  padding: 1rem 1rem 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.buy-section-header::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border), transparent);
+}
+
+.buy-section-header.yellow { color: #b7a000; }
+.buy-section-header.yellow::after { background: linear-gradient(to right, #fcf3cf, transparent); }
+
+.buy-section-header.red { color: var(--danger); }
+.buy-section-header.red::after { background: linear-gradient(to right, var(--danger-light), transparent); }
+
+.buy-section-header.gray { color: var(--text-muted); }
+.buy-section-header.gray::after { background: linear-gradient(to right, var(--border), transparent); }
+
+.parent-context {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-right: 4px;
+  font-weight: 500;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div style="position:relative; display:flex; align-items:center; gap:6px;">
+      <h1 style="font-size:1.4rem;">Lista de</h1>
+      <select id="current-month-select" class="month-select" onchange="changeMonth(this.value)"></select>
+      <button class="btn-small" onclick="toggleNewMonthPicker()" title="Nova lista">+</button>
+      <button class="btn-small btn-danger-small" onclick="deleteCurrentMonth()" title="Excluir este mês">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l1 9a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-9M1 3h14M10 3V1a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v2"/></svg>
+      </button>
+      <div id="new-month-picker">
+        <input type="month" id="new-month-input" style="padding:4px; font-size:0.8rem; border:1px solid var(--border); border-radius:4px;">
+        <button class="btn-primary" style="height:28px; padding:0 10px; font-size:0.75rem;" onclick="addNewMonth()">OK</button>
+      </div>
+    </div>
+    <button class="btn-primary" style="height: 32px; padding: 0 12px; font-size: 0.8rem;" onclick="downloadPDF()">PDF</button>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('lista')">Lista</button>
+    <button class="tab" onclick="showTab('produtos')">Produtos</button>
+  </div>
+
+  <!-- LISTA -->
+  <div class="panel active" id="panel-lista">
+    <div id="buy-list"></div>
+  </div>
+
+  <!-- PRODUTOS -->
+  <div class="panel" id="panel-produtos">
+    <div class="card">
+      <h2 style="margin-bottom: 0.5rem;">Adicionar produto</h2>
+      <div class="form-grid" style="grid-template-columns: 1.5fr 1fr 1fr 1fr;">
+        <div class="field">
+          <label for="prod-name">Nome</label>
+          <input type="text" id="prod-name" placeholder="Ex: Maçã" />
+        </div>
+        <div class="field">
+          <label for="prod-cat">Categoria</label>
+          <input type="text" id="prod-cat" placeholder="Ex: Limpeza" list="cat-list" />
+          <datalist id="cat-list">
+            <option value="Hortifruti"></option>
+            <option value="Limpeza"></option>
+            <option value="Açougue"></option>
+            <option value="Mercearia"></option>
+            <option value="Higiene"></option>
+            <option value="Bebidas"></option>
+            <option value="Frios/Laticínios"></option>
+          </datalist>
+        </div>
+        <div class="field">
+          <label for="prod-need">Meta</label>
+          <input type="number" id="prod-need" placeholder="0.0" step="0.1" min="0" />
+        </div>
+        <div class="field">
+          <label for="prod-unit">Un</label>
+          <select id="prod-unit" class="field" style="width:100%; height:28px; border:1px solid var(--border); border-radius:8px; padding:0 4px; font-family:inherit; font-size:0.8rem; background:var(--bg);">
+            <option value="un">un</option>
+            <option value="kg">kg</option>
+            <option value="g">g</option>
+            <option value="L">L</option>
+            <option value="ml">ml</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" style="width:100%; margin-top:10px; height:32px;" onclick="addProduct()">+ Adicionar à Base</button>
+    </div>
+
+    <div id="prod-list"></div>
+
+    <div style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
+      <button class="btn-small" style="justify-content: center; padding: 10px;" onclick="resetInventoryForMonth()">Zerar inventário deste mês (Voltar a precisar de tudo)</button>
+      <button class="btn-small btn-danger-small" style="justify-content: center; padding: 10px;" onclick="resetApp()">⚠️ Resetar Aplicativo (Apagar tudo profissionalmente)</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- TELA DE LOGIN -->
+<div id="login-screen">
+  <h1>🛒 Lista de Compras</h1>
+  <p style="color: var(--text-muted); font-size: 0.85rem;">Digite a senha para acessar</p>
+  <input type="password" id="login-input" placeholder="Senha" onkeydown="if(event.key==='Enter') doLogin()" />
+  <button class="btn-primary" style="width:280px;" onclick="doLogin()">Entrar</button>
+  <span id="login-error">Senha incorreta. Tente novamente.</span>
+  <span id="login-loading">Verificando...</span>
+</div>
+
+<script>
+const API_URL = '/api/lista';
+let ACCESS_KEY = '';
+
+let products = [];
+let shopHistory = {};
+let currentMonth = '';
+let nextId = 1;
+
+// ===== API =====
+async function api(method, path, body) {
+  const res = await fetch(API_URL + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', 'x-access-key': ACCESS_KEY },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) throw new Error('unauthorized');
+  return res.json();
+}
+
+async function doLogin() {
+  const key = document.getElementById('login-input').value;
+  if (!key) return;
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('login-loading').style.display = 'block';
+  ACCESS_KEY = key;
+  try {
+    await api('GET', '/config');
+    sessionStorage.setItem('lista_key', key);
+    document.getElementById('login-screen').style.display = 'none';
+    await init();
+  } catch {
+    ACCESS_KEY = '';
+    document.getElementById('login-error').style.display = 'block';
+  } finally {
+    document.getElementById('login-loading').style.display = 'none';
+  }
+}
+
+async function init() {
+  // Carrega config
+  const config = await api('GET', '/config');
+  nextId = parseInt(config.nextId || '1');
+  currentMonth = config.currentMonth || '';
+
+  // Carrega produtos
+  const rawProducts = await api('GET', '/products');
+  products = rawProducts.map(p => ({
+    id: p.id,
+    name: p.name,
+    category: p.category || '',
+    need: parseFloat(p.need) || 0,
+    unit: p.unit || 'un',
+    parentId: p.parent_id || null,
+  }));
+
+  // Carrega histórico do mês atual
+  shopHistory = {};
+  if (currentMonth) {
+    await loadMonthHistory(currentMonth);
+  }
+
+  populateMonthSelect();
+  renderAll();
+}
+
+async function loadMonthHistory(month) {
+  const rows = await api('GET', `/history/${encodeURIComponent(month)}`);
+  shopHistory[month] = {};
+  rows.forEach(r => {
+    shopHistory[month][r.product_id] = {
+      have: parseFloat(r.have) || 0,
+      done: r.done || false,
+      obs: r.obs || '',
+      bought: parseFloat(r.bought) || 0,
+    };
+  });
+}
+
+async function saveConfig() {
+  await api('POST', '/config', { nextId: String(nextId), currentMonth });
+}
+
+async function saveState(productId) {
+  if (!currentMonth) return;
+  const s = getState(productId);
+  await api('POST', '/history', [{
+    month: currentMonth,
+    product_id: productId,
+    have: s.have,
+    done: s.done,
+    obs: s.obs,
+    bought: s.bought || 0,
+  }]);
+}
+
+// compat: saveData still exists but is now a no-op (all saves are targeted)
+function saveData() {}
+
+
+function populateMonthSelect() {
+  const select = document.getElementById('current-month-select');
+  select.innerHTML = '';
+  
+  // Get all months from history and sort them
+  const months = Object.keys(shopHistory).sort().reverse();
+  
+  if (months.length === 0) {
+    const opt = document.createElement('option');
+    opt.textContent = "Nenhuma lista";
+    select.appendChild(opt);
+    return;
+  }
+
+  months.forEach(m => {
+    const [year, month] = m.split('-');
+    const date = new Date(year, parseInt(month) - 1, 1);
+    const label = date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '');
+    
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = label;
+    if (m === currentMonth) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+function toggleNewMonthPicker() {
+  const p = document.getElementById('new-month-picker');
+  p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+}
+
+async function addNewMonth() {
+  const val = document.getElementById('new-month-input').value;
+  if (!val) return;
+  
+  if (!shopHistory[val]) shopHistory[val] = {};
+  currentMonth = val;
+  toggleNewMonthPicker();
+  await saveConfig();
+  await loadMonthHistory(val);
+  populateMonthSelect();
+  renderAll();
+}
+
+async function changeMonth(val) {
+  if (!val || val === 'Nenhuma lista') return;
+  currentMonth = val;
+  await saveConfig();
+  if (!shopHistory[val]) await loadMonthHistory(val);
+  renderAll();
+}
+
+async function deleteCurrentMonth() {
+  if (!currentMonth) return;
+  if (!confirm(`Tem certeza que deseja excluir toda a lista de ${currentMonth}?`)) return;
+  // Nuvem: apaga histórico do mês via API não implementado na edge fn, limpa local
+  delete shopHistory[currentMonth];
+  const remaining = Object.keys(shopHistory).sort().reverse();
+  currentMonth = remaining.length > 0 ? remaining[0] : '';
+  await saveConfig();
+  populateMonthSelect();
+  renderAll();
+}
+
+async function resetInventoryForMonth() {
+  if (!currentMonth) return;
+  if (!confirm(`Zerar as quantidades que você "já tem" para este mês?`)) return;
+  
+  const ids = Object.keys(shopHistory[currentMonth] || {});
+  if (shopHistory[currentMonth]) {
+    for (const id of ids) {
+      shopHistory[currentMonth][id].have = 0;
+      shopHistory[currentMonth][id].done = false;
+      shopHistory[currentMonth][id].bought = 0;
+      await saveState(parseInt(id));
+    }
+  }
+  renderAll();
+}
+
+async function resetApp() {
+  if (!confirm('Isso apagará TODOS os produtos e histórico. Tem certeza?')) return;
+  await api('POST', '/config', { nextId: '1', currentMonth: '' });
+  // deleta todos os produtos
+  for (const p of [...products]) {
+    await api('DELETE', `/products/${p.id}`);
+  }
+  location.reload();
+}
+
+function getState(id) {
+  if (!currentMonth) return { have:0, done:false, obs:'', bought:0 };
+  if (!shopHistory[currentMonth]) shopHistory[currentMonth] = {};
+  if (!shopHistory[currentMonth][id]) {
+    shopHistory[currentMonth][id] = { have:0, done:false, obs:'', bought:0 };
+  }
+  return shopHistory[currentMonth][id];
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showTab(tab) {
+  ['lista','produtos'].forEach((t,i) => {
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+    document.querySelectorAll('.tab')[i].classList.toggle('active', t===tab);
+  });
+}
+
+async function addProduct() {
+  const nameEl = document.getElementById('prod-name');
+  const catEl = document.getElementById('prod-cat');
+  const needEl = document.getElementById('prod-need');
+  const unitEl = document.getElementById('prod-unit');
+
+  const name = nameEl.value.trim();
+  const cat = catEl.value.trim() || '';
+  const need = parseFloat(needEl.value) || 0;
+  const unit = unitEl.value;
+
+  if (!name) { nameEl.focus(); return; }
+  
+  const id = nextId++;
+  const newProd = { id, name, category: cat, need, unit, parentId: null };
+  products.push(newProd);
+  
+  nameEl.value = ''; needEl.value = '';
+  renderAll();
+  
+  await api('POST', '/products', { id, name, category: cat, need, unit, parent_id: null });
+  await saveConfig();
+}
+
+function toggleSubform(id) {
+  const el = document.getElementById(`subform-${id}`);
+  el.classList.toggle('active');
+  if (el.classList.contains('active')) {
+    document.getElementById(`subname-${id}`).focus();
+  }
+}
+
+async function addSubproduct(parentId) {
+  const parent = products.find(p => p.id === parentId);
+  const nameEl = document.getElementById(`subname-${parentId}`);
+  const needEl = document.getElementById(`subneed-${parentId}`);
+  const unitEl = document.getElementById(`subunit-${parentId}`);
+
+  const name = nameEl.value.trim();
+  const need = parseFloat(needEl.value) || 0;
+  const unit = unitEl.value;
+
+  if (!name) { nameEl.focus(); return; }
+  
+  const id = nextId++;
+  const cat = parent?.category || '';
+  products.push({ id, name, category: cat, need, unit, parentId });
+  
+  nameEl.value = ''; needEl.value = '';
+  toggleSubform(parentId);
+  renderAll();
+  
+  await api('POST', '/products', { id, name, category: cat, need, unit, parent_id: parentId });
+  await saveConfig();
+}
+
+document.getElementById('prod-name').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('prod-need').focus(); });
+document.getElementById('prod-need').addEventListener('keydown', e => { if(e.key==='Enter') addProduct(); });
+
+async function deleteProduct(id) {
+  if (!confirm('Remover este produto (e seus subitens) de forma definitiva da base?')) return;
+  
+  const toDelete = new Set([id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    products.forEach(p => {
+      if (p.parentId && toDelete.has(p.parentId) && !toDelete.has(p.id)) {
+        toDelete.add(p.id); changed = true;
+      }
+    });
+  }
+  
+  products = products.filter(p => !toDelete.has(p.id));
+  renderAll();
+  
+  // A cascade é tratada pelo banco (ON DELETE CASCADE)
+  await api('DELETE', `/products/${id}`);
+}
+
+async function updateNeed(id, val) {
+  const p = products.find(p => p.id === id);
+  if (p) { p.need = Math.max(0, parseFloat(val) || 0); }
+  refreshResult(id);
+  await api('PUT', `/products/${id}`, { need: p.need });
+}
+
+async function updateProductName(id, val) {
+  const p = products.find(i => i.id === id);
+  if (p) p.name = val;
+  await api('PUT', `/products/${id}`, { name: val });
+}
+
+async function updateProductCategory(id, val) {
+  const p = products.find(i => i.id === id);
+  if (p) p.category = val;
+  await api('PUT', `/products/${id}`, { category: val });
+}
+
+async function updateHave(id, val) {
+  const s = getState(id);
+  s.have = Math.max(0, parseFloat(val) || 0);
+  refreshResult(id);
+  await saveState(id);
+}
+
+// Update only the result cell of one item without full re-render
+function refreshResult(id) {
+  const p = products.find(p => p.id === id);
+  if (!p) return;
+  const s = getState(id);
+  const el = document.getElementById('result-'+id);
+  if (!el) return;
+  const toBuy = Math.max(0, p.need - s.have);
+  const sufficient = s.have >= p.need;
+  el.className = sufficient ? 'result-ok' : 'result-buy';
+  el.textContent = sufficient ? 'Suficiente' : toBuy + ' ' + p.unit;
+}
+
+async function toggleDone(id) {
+  const s = getState(id);
+  s.done = !s.done;
+  
+  const prod = products.find(p => p.id === id);
+  
+  if (s.done && prod) {
+    const needed = Math.max(0, prod.need - s.have);
+    if (!s.bought || parseFloat(s.bought) === 0) s.bought = needed;
+  }
+
+  if (prod && prod.parentId) updateParentStatus(prod.parentId);
+
+  renderBuyList();
+  await saveState(id);
+}
+
+function updateParentStatus(parentId) {
+  if (!parentId) return;
+  const children = products.filter(c => c.parentId === parentId);
+  const allDone = children.every(c => getState(c.id).done);
+  
+  getState(parentId).done = allDone;
+  
+  const parentProd = products.find(p => p.id === parentId);
+  if (parentProd && parentProd.parentId) updateParentStatus(parentProd.parentId);
+}
+async function clearDone() {
+  const toClear = products.filter(p => getState(p.id).done);
+  toClear.forEach(p => {
+    const s = getState(p.id);
+    s.done = false; s.obs = ''; s.bought = 0;
+  });
+  renderBuyList();
+  for (const p of toClear) await saveState(p.id);
+}
+
+async function updateObs(id, val) {
+  getState(id).obs = val;
+  await saveState(id);
+}
+
+async function updateBought(id, val) {
+  getState(id).bought = Math.max(0, parseFloat(val) || 0);
+  renderBuyList();
+  await saveState(id);
+}
+
+function toggleObsField(id) {
+  const el = document.getElementById(`obs-${id}`);
+  el.classList.toggle('visible');
+  if (el.classList.contains('visible')) el.focus();
+}
+
+function hideIfEmpty(id) {
+  const el = document.getElementById(`obs-${id}`);
+  if (!el.value.trim()) {
+    el.classList.remove('visible');
+  }
+}
+
+function renderBuyList() {
+  const container = document.getElementById('buy-list');
+
+  if (!currentMonth) {
+    container.innerHTML = '<div class="empty">Para começar, crie uma nova lista no botão "+ Novo" acima.</div>';
+    return;
+  }
+  
+  if (!products.length) {
+    container.innerHTML = '<div class="empty">Cadastre produtos na aba "Produtos" para começar.</div>';
+    return;
+  }
+
+  const sections = [
+    { title: '🔥 Precisam ser comprados', items: [] },
+    { title: '⏳ Compras parciais / Incompletos', items: [] },
+    { title: '✅ Já comprados', items: [] },
+    { title: '📦 No estoque / Não precisa', items: [] }
+  ];
+
+  products.forEach(p => {
+    const hasChildren = products.some(c => c.parentId === p.id);
+    // Categorias/Pais não entram na lista final de compra
+    if (hasChildren) return;
+
+    const s = getState(p.id);
+    const bought = s.bought || 0;
+    
+    let statusIndex = 0;
+    if (s.done) {
+      statusIndex = 2;
+    } else if ((s.have + bought) >= p.need && p.need > 0) {
+      statusIndex = 3;
+    } else if ((bought > 0 || s.obs) && (s.have + bought) < p.need) {
+      statusIndex = 1;
+    } else {
+      statusIndex = 0;
+    }
+    
+    sections[statusIndex].items.push(p);
+  });
+
+  let html = '';
+  const headerClasses = ['', 'yellow', 'red', 'gray'];
+  sections.forEach((sec, idx) => {
+    if (sec.items.length === 0) return;
+    
+    html += `<div class="buy-section-header ${headerClasses[idx]}">${sec.title}</div>`;
+    
+    sec.items.forEach(p => {
+      const s = getState(p.id);
+      const qty = Math.max(0, p.need - s.have);
+      const hasChildren = products.some(c => c.parentId === p.id);
+      const parent = p.parentId ? products.find(i => i.id === p.parentId) : null;
+      
+      const qtyHtml = hasChildren ? '' : `
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 160px; justify-content: flex-end; padding-left: 10px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 0.52rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Comprei</span>
+            <input 
+              type="number" step="0.1" min="0" class="qty-input" 
+              style="width: 42px; height: 24px; font-size: 0.8rem; padding: 0 4px; ${idx === 3 ? 'background: #e9ecef; border: none;' : '' }" 
+              value="${s.bought || 0}" 
+              oninput="updateBought(${p.id}, this.value)"
+            />
+          </div>
+          <span class="buy-qty" style="min-width: 55px; font-size: 0.75rem; padding: 3px 6px; text-align: center; ${idx === 3 ? 'opacity: 0.6;' : ''}">${qty} ${p.unit}</span>
+        </div>
+      `;
+      const parentHtml = parent ? `<span class="parent-context">${esc(parent.name)}</span>` : '';
+
+      html += `<div class="buy-item${s.done?' done':''} ${headerClasses[idx]}">
+        <button class="checkbox${s.done?' checked':''}" onclick="toggleDone(${p.id})">
+          <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
+            <path d="M1 4.5L4 7.5L10 1.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="buy-name${s.done?' crossed':''}">
+          <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
+            ${parentHtml}
+            <span>${esc(p.name)}</span>
+            <button class="btn-icon btn-small-icon" onclick="toggleObsField(${p.id})" title="Observação">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            </button>
+          </div>
+          <input 
+            id="obs-${p.id}"
+            type="text" 
+            class="buy-obs-input${s.obs ? ' visible' : ''}" 
+            placeholder="Nota..." 
+            value="${esc(s.obs || '')}" 
+            onchange="updateObs(${p.id}, this.value)"
+            onblur="hideIfEmpty(${p.id})"
+          />
+        </div>
+        ${qtyHtml}
+      </div>`;
+    });
+  });
+
+  container.innerHTML = html || '<div class="empty">Nenhum item relevante para exibir.</div>';
+}
+
+function renderItem(p, depth = 0) {
+  const s = getState(p.id);
+  const children = products.filter(c => c.parentId === p.id);
+  const toBuy = p.need - s.have;
+  const sufficient = s.have >= p.need;
+
+  let itemHtml = `
+      <div class="prod-item${depth > 0 ? ' sub-item' : ''}">
+        <div class="prod-top" style="margin-bottom: 2px;">
+          <div style="flex: 1; display: flex; align-items: center;">
+            <input 
+              type="text" 
+              class="prod-name-input" 
+              value="${esc(p.name)}" 
+              onchange="updateProductName(${p.id}, this.value)"
+              style="font-size: ${depth > 0 ? '0.78rem' : '0.85rem'};"
+            />
+            <input 
+              type="text" 
+              class="qty-input" 
+              style="width: 55px; height: 18px; font-size: 0.52rem; text-transform: uppercase; border: none; background: rgba(0,0,0,0.03); color: var(--text-muted); padding: 0 4px; margin-left: 4px;"
+              placeholder="CAT..."
+              value="${esc(p.category || '')}"
+              onchange="updateProductCategory(${p.id}, this.value)"
+            />
+          </div>
+          <button class="btn-icon" onclick="toggleSubform(${p.id})" title="Adicionar subitem">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button class="btn-icon" onclick="deleteProduct(${p.id})" title="Remover">
+            <svg width="11" height="11" viewBox="0 0 13 13" fill="none">
+              <path d="M1.5 1.5L11.5 11.5M11.5 1.5L1.5 11.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div id="subform-${p.id}" class="subform" style="padding: 0.5rem; margin: 4px 0;">
+          <div class="form-grid">
+            <div class="field">
+              <label>Nome</label>
+              <input type="text" id="subname-${p.id}" placeholder="Ex: Light" />
+            </div>
+            <div class="field">
+              <label>Qtd</label>
+              <input type="number" id="subneed-${p.id}" placeholder="0.0" />
+            </div>
+            <div class="field">
+              <label>Un</label>
+              <select id="subunit-${p.id}" class="field" style="width:100%; height:28px; border-radius:6px; font-size:0.8rem; background:var(--bg);">
+                <option value="un">un</option>
+                <option value="kg">kg</option>
+                <option value="g">g</option>
+                <option value="L">L</option>
+                <option value="ml">ml</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn-primary" style="width:100%; margin-top:5px; height:26px; font-size:0.75rem;" onclick="addSubproduct(${p.id})">+ Adicionar</button>
+        </div>
+
+        ${!children.length ? `
+        <div class="stock-row">
+          <div class="qty-block">
+            <span class="qty-lbl">Mês</span>
+            <input
+              class="qty-input"
+              type="number" step="0.1" min="0" 
+              value="${p.need}"
+              onchange="updateNeed(${p.id}, this.value)"
+            />
+          </div>
+          <div class="sep"></div>
+          <div class="qty-block">
+            <span class="qty-lbl">Tenho</span>
+            <input
+              class="qty-input"
+              type="number" step="0.1" min="0"
+              value="${s.have}"
+              onchange="updateHave(${p.id}, this.value)"
+            />
+          </div>
+          <div class="sep"></div>
+          <div class="qty-block">
+            <span class="qty-lbl">Falta</span>
+            <span id="result-${p.id}" class="${sufficient?'result-ok':'result-buy'}" style="font-size: 0.8rem;">${sufficient?'Ok':toBuy.toFixed(1).replace(/\.0$/, '') + p.unit}</span>
+          </div>
+        </div>
+        ` : ''}
+      </div>
+    `;
+
+    if (children.length > 0) {
+      itemHtml += `<div class="sub-item-container">
+        ${children.map(c => renderItem(c, depth + 1)).join('')}
+      </div>`;
+    }
+
+    return itemHtml;
+}
+
+function renderProdList() {
+  const container = document.getElementById('prod-list');
+  const topLevel = products.filter(p => !p.parentId);
+  container.innerHTML = topLevel.map(p => renderItem(p)).join('');
+}
+
+function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  
+  const itemsToBuy = products.filter(p => !getState(p.id).done && (p.need - getState(p.id).have) > 0);
+  
+  const tableData = itemsToBuy.map(p => {
+    const qty = (p.need - getState(p.id).have).toFixed(1).replace(/\.0$/, '');
+    return [p.name, qty, p.unit, getState(p.id).obs || '-'];
+  });
+
+  doc.setFontSize(18);
+  doc.text("Lista de Compras", 14, 20);
+  doc.setFontSize(10);
+  doc.text("Gerado em: " + new Date().toLocaleDateString('pt-BR'), 14, 28);
+
+  doc.autoTable({
+    startY: 35,
+    head: [['Item', 'Qtd', 'Unidade', 'Observação']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: { fillStyle: 'var(--accent)', fillColor: [42, 77, 20] },
+    styles: { font: 'helvetica', fontSize: 10 }
+  });
+
+  doc.save("lista-de-compras.pdf");
+}
+
+function renderAll() {
+  renderBuyList();
+  renderProdList();
+}
+
+// Boot: tenta reconectar automaticamente da sess\u00e3o
+(async () => {
+  const savedKey = sessionStorage.getItem('lista_key');
+  if (savedKey) {
+    ACCESS_KEY = savedKey;
+    try {
+      await api('GET', '/config');
+      document.getElementById('login-screen').style.display = 'none';
+      await init();
+    } catch {
+      sessionStorage.removeItem('lista_key');
+      ACCESS_KEY = '';
+    }
+  }
+})();
+</script>
+</body>
+</html>
