@@ -387,6 +387,9 @@ header h1 {
       <button class="btn-small btn-danger-small" onclick="deleteCurrentMonth()" title="Excluir este mês">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l1 9a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-9M1 3h14M10 3V1a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v2"/></svg>
       </button>
+      <button class="btn-small" onclick="init()" title="Sincronizar/Atualizar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+      </button>
       <div id="new-month-picker">
         <input type="month" id="new-month-input" style="padding:4px; font-size:0.8rem; border:1px solid var(--border); border-radius:4px;">
         <button class="btn-primary" style="height:28px; padding:0 10px; font-size:0.75rem;" onclick="addNewMonth()">OK</button>
@@ -884,9 +887,11 @@ function renderBuyList() {
     const bought = s.bought || 0;
     
     let statusIndex = 0;
-    if (s.done) {
+    if (p.need <= s.have) {
+      statusIndex = 3;
+    } else if (s.done) {
       statusIndex = 2;
-    } else if ((s.have + bought) >= p.need && p.need > 0) {
+    } else if ((s.have + bought) >= p.need) {
       statusIndex = 3;
     } else if ((bought > 0 || s.obs) && (s.have + bought) < p.need) {
       statusIndex = 1;
