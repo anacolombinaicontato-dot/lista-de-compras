@@ -375,6 +375,58 @@ header h1 {
   margin-right: 4px;
   font-weight: 500;
 }
+
+/* Undo Toast */
+#undo-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #333;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  z-index: 10000;
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  font-size: 0.9rem;
+}
+#undo-toast.show { transform: translateX(-50%) translateY(0); }
+#undo-toast button {
+  background: var(--accent-light);
+  color: var(--accent);
+  border: none;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.progress-container {
+  width: 30px;
+  height: 30px;
+  position: relative;
+}
+.progress-svg {
+  transform: rotate(-90deg);
+}
+.progress-bg {
+  fill: none;
+  stroke: rgba(255,255,255,0.2);
+  stroke-width: 3;
+}
+.progress-bar {
+  fill: none;
+  stroke: var(--accent-mid);
+  stroke-width: 3;
+  stroke-dasharray: 81.68; /* 2 * pi * r (r=13) */
+  stroke-dashoffset: 81.68;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.1s linear;
+}
 </style>
 </head>
 <body>
@@ -455,7 +507,19 @@ header h1 {
       <button class="btn-small btn-danger-small" style="justify-content: center; padding: 10px;" onclick="resetApp()">⚠️ Resetar Aplicativo (Apagar tudo profissionalmente)</button>
     </div>
   </div>
+  </div>
 </div>
+
+<!-- Undo Toast -->
+<div id="undo-toast">
+  <div class="progress-container">
+    <svg class="progress-svg" width="30" height="30">
+      <circle class="progress-bg" cx="15" cy="15" r="13"></circle>
+      <circle id="undo-prog" class="progress-bar" cx="15" cy="15" r="13"></circle>
+    </svg>
+  </div>
+  <span id="undo-msg">Item movido</span>
+  <button onclick="cancelUndo()">Desfazer</button>
 </div>
 
 <!-- TELA DE LOGIN -->
@@ -476,6 +540,11 @@ let products = [];
 let shopHistory = {};
 let currentMonth = '';
 let nextId = 1;
+
+let undoTimeout = null;
+let undoAction = null;
+let undoProgressInterval = null;
+let pendingActions = {}; // {productId: {timeoutId, originalSection, newState}}
 
 // ===== API =====
 async function api(method, path, body) {
@@ -759,10 +828,22 @@ async function deleteProduct(id) {
 }
 
 async function updateNeed(id, val) {
-  const p = products.find(p => p.id === id);
-  if (p) { p.need = Math.max(0, parseFloat(val) || 0); }
-  refreshResult(id);
-  await api('PUT', `/products/${id}`, { need: p.need });
+  const p = products.find(i => i.id === id);
+  if (!p) return;
+  const s = getState(id);
+  const oldSection = getItemSection(p, s);
+  
+  const newVal = Math.max(0, parseFloat(val) || 0);
+  const tempP = { ...p, need: newVal };
+  const newSection = getItemSection(tempP, s);
+
+  if (oldSection !== newSection && oldSection !== -1) {
+    handleDelayedAction(id, { need: newVal, isProductUpdate: true }, "Meta de compra alterada");
+  } else {
+    p.need = newVal;
+    refreshResult(id);
+    await api('PUT', `/products/${id}`, { need: p.need });
+  }
 }
 
 async function updateProductName(id, val) {
@@ -778,10 +859,132 @@ async function updateProductCategory(id, val) {
 }
 
 async function updateHave(id, val) {
+  const p = products.find(i => i.id === id);
   const s = getState(id);
-  s.have = Math.max(0, parseFloat(val) || 0);
-  refreshResult(id);
-  await saveState(id);
+  const oldSection = getItemSection(p, s);
+  
+  const newVal = Math.max(0, parseFloat(val) || 0);
+  const tempS = { ...s, have: newVal };
+  const newSection = getItemSection(p, tempS);
+
+  if (oldSection !== newSection && oldSection !== -1) {
+    handleDelayedAction(id, { have: newVal }, "Estoque atualizado");
+  } else {
+    s.have = newVal;
+    refreshResult(id);
+    await saveState(id);
+  }
+}
+
+function getItemSection(p, s) {
+  if (!p) return -1;
+  const bought = s.bought || 0;
+  if (p.need <= s.have) return 3;
+  if (s.done) return 2;
+  if ((s.have + bought) >= p.need) return 3;
+  if ((bought > 0 || s.obs) && (s.have + bought) < p.need) return 1;
+  return 0;
+}
+
+function handleDelayedAction(id, newState, message) {
+  // If there's already a pending action for this item, clear it
+  if (pendingActions[id]) {
+    clearTimeout(pendingActions[id].timeoutId);
+  }
+  
+  const p = products.find(i => i.id === id);
+  const s = getState(id);
+  const originalSection = getItemSection(p, s);
+  
+  const timeoutId = setTimeout(async () => {
+    applyPendingAction(id);
+  }, 5000);
+  
+  pendingActions[id] = { timeoutId, originalSection, newState };
+  
+  showUndoToast(message, 5000, () => {
+    applyPendingAction(id);
+  });
+  
+  renderAll();
+}
+
+async function applyPendingAction(id) {
+  if (!pendingActions[id]) return;
+  const { newState } = pendingActions[id];
+  
+  if (newState.isProductUpdate) {
+    const p = products.find(i => i.id === id);
+    if (p) {
+      delete newState.isProductUpdate;
+      Object.assign(p, newState);
+      await api('PUT', `/products/${id}`, newState);
+    }
+  } else {
+    const s = getState(id);
+    Object.assign(s, newState);
+    await saveState(id);
+  }
+  
+  const p = products.find(i => i.id === id);
+  if (p && p.parentId) updateParentStatus(p.parentId);
+
+  delete pendingActions[id];
+  renderAll();
+}
+
+function cancelUndo() {
+  if (undoTimeout) {
+    clearTimeout(undoTimeout);
+    undoTimeout = null;
+  }
+  if (undoProgressInterval) {
+    clearInterval(undoProgressInterval);
+    undoProgressInterval = null;
+  }
+  
+  // Clear all pending actions
+  for (const id in pendingActions) {
+    clearTimeout(pendingActions[id].timeoutId);
+  }
+  pendingActions = {};
+  
+  const toast = document.getElementById('undo-toast');
+  toast.classList.remove('show');
+  renderAll();
+}
+
+function showUndoToast(msg, duration, callback) {
+  if (undoTimeout) clearTimeout(undoTimeout);
+  if (undoProgressInterval) clearInterval(undoProgressInterval);
+  
+  const toast = document.getElementById('undo-toast');
+  const prog = document.getElementById('undo-prog');
+  const msgEl = document.getElementById('undo-msg');
+  
+  msgEl.innerText = msg;
+  toast.classList.add('show');
+  
+  const startTime = Date.now();
+  const radius = 13;
+  const circumference = 2 * Math.PI * radius;
+  prog.style.strokeDasharray = circumference;
+  
+  undoProgressInterval = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    const remaining = Math.max(0, duration - elapsed);
+    const offset = (remaining / duration) * circumference;
+    prog.style.strokeDashoffset = offset;
+    
+    if (remaining <= 0) {
+      clearInterval(undoProgressInterval);
+      toast.classList.remove('show');
+    }
+  }, 50);
+  
+  undoTimeout = setTimeout(() => {
+    toast.classList.remove('show');
+  }, duration);
 }
 
 // Update only the result cell of one item without full re-render
@@ -798,20 +1001,29 @@ function refreshResult(id) {
 }
 
 async function toggleDone(id) {
+  const p = products.find(i => i.id === id);
   const s = getState(id);
-  s.done = !s.done;
+  const oldSection = getItemSection(p, s);
   
-  const prod = products.find(p => p.id === id);
-  
-  if (s.done && prod) {
-    const needed = Math.max(0, prod.need - s.have);
-    if (!s.bought || parseFloat(s.bought) === 0) s.bought = needed;
+  const newDone = !s.done;
+  let newBought = s.bought;
+  if (newDone && p) {
+    const needed = Math.max(0, p.need - s.have);
+    if (!s.bought || parseFloat(s.bought) === 0) newBought = needed;
   }
+  
+  const tempS = { ...s, done: newDone, bought: newBought };
+  const newSection = getItemSection(p, tempS);
 
-  if (prod && prod.parentId) updateParentStatus(prod.parentId);
-
-  renderBuyList();
-  await saveState(id);
+  if (oldSection !== newSection && oldSection !== -1) {
+    handleDelayedAction(id, { done: newDone, bought: newBought }, "Item concluído");
+  } else {
+    s.done = newDone;
+    s.bought = newBought;
+    if (p && p.parentId) updateParentStatus(p.parentId);
+    renderBuyList();
+    await saveState(id);
+  }
 }
 
 function updateParentStatus(parentId) {
@@ -840,9 +1052,21 @@ async function updateObs(id, val) {
 }
 
 async function updateBought(id, val) {
-  getState(id).bought = Math.max(0, parseFloat(val) || 0);
-  renderBuyList();
-  await saveState(id);
+  const p = products.find(i => i.id === id);
+  const s = getState(id);
+  const oldSection = getItemSection(p, s);
+  
+  const newVal = Math.max(0, parseFloat(val) || 0);
+  const tempS = { ...s, bought: newVal };
+  const newSection = getItemSection(p, tempS);
+
+  if (oldSection !== newSection && oldSection !== -1) {
+    handleDelayedAction(id, { bought: newVal }, "Qtd comprada atualizada");
+  } else {
+    s.bought = newVal;
+    renderBuyList();
+    await saveState(id);
+  }
 }
 
 function toggleObsField(id) {
@@ -884,19 +1108,11 @@ function renderBuyList() {
     if (hasChildren) return;
 
     const s = getState(p.id);
-    const bought = s.bought || 0;
-    
-    let statusIndex = 0;
-    if (p.need <= s.have) {
-      statusIndex = 3;
-    } else if (s.done) {
-      statusIndex = 2;
-    } else if ((s.have + bought) >= p.need) {
-      statusIndex = 3;
-    } else if ((bought > 0 || s.obs) && (s.have + bought) < p.need) {
-      statusIndex = 1;
-    } else {
-      statusIndex = 0;
+    let statusIndex = getItemSection(p, s);
+
+    // Force original section if pending change
+    if (pendingActions[p.id]) {
+        statusIndex = pendingActions[p.id].originalSection;
     }
     
     sections[statusIndex].items.push(p);
@@ -910,20 +1126,25 @@ function renderBuyList() {
     html += `<div class="buy-section-header ${headerClasses[idx]}">${sec.title}</div>`;
     
     sec.items.forEach(p => {
-      const s = getState(p.id);
+      const s = { ...getState(p.id) };
+      // If pending, show the NEW state values even if in old section
+      if (pendingActions[p.id]) {
+          Object.assign(s, pendingActions[p.id].newState);
+      }
+      
       const qty = Math.max(0, p.need - s.have);
       const hasChildren = products.some(c => c.parentId === p.id);
       const parent = p.parentId ? products.find(i => i.id === p.parentId) : null;
       
       const qtyHtml = hasChildren ? '' : `
-        <div style="display: flex; align-items: center; gap: 12px; min-width: 160px; justify-content: flex-end; padding-left: 10px;">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 160px; justify-content: flex-end; padding-left: 10px; ${pendingActions[p.id] ? 'opacity: 0.5; pointer-events: none;' : ''}">
           <div style="display: flex; align-items: center; gap: 6px;">
             <span style="font-size: 0.52rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Comprei</span>
             <input 
               type="number" step="0.1" min="0" class="qty-input" 
               style="width: 42px; height: 24px; font-size: 0.8rem; padding: 0 4px; ${idx === 3 ? 'background: #e9ecef; border: none;' : '' }" 
               value="${s.bought || 0}" 
-              oninput="updateBought(${p.id}, this.value)"
+              onchange="updateBought(${p.id}, this.value)"
             />
           </div>
           <span class="buy-qty" style="min-width: 55px; font-size: 0.75rem; padding: 3px 6px; text-align: center; ${idx === 3 ? 'opacity: 0.6;' : ''}">${qty} ${p.unit}</span>
@@ -931,8 +1152,8 @@ function renderBuyList() {
       `;
       const parentHtml = parent ? `<span class="parent-context">${esc(parent.name)}</span>` : '';
 
-      html += `<div class="buy-item${s.done?' done':''} ${headerClasses[idx]}">
-        <button class="checkbox${s.done?' checked':''}" onclick="toggleDone(${p.id})">
+      html += `<div class="buy-item${s.done?' done':''} ${headerClasses[idx]}" ${pendingActions[p.id] ? 'style="border-style: dashed; transition: all 0.3s;"' : ''}>
+        <button class="checkbox${s.done?' checked':''}" onclick="toggleDone(${p.id})" ${pendingActions[p.id] ? 'disabled' : ''}>
           <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
             <path d="M1 4.5L4 7.5L10 1.5" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -964,13 +1185,17 @@ function renderBuyList() {
 }
 
 function renderItem(p, depth = 0) {
-  const s = getState(p.id);
+  let s = { ...getState(p.id) };
+  if (pendingActions[p.id]) {
+    Object.assign(s, pendingActions[p.id].newState);
+  }
+  
   const children = products.filter(c => c.parentId === p.id);
   const toBuy = p.need - s.have;
   const sufficient = s.have >= p.need;
 
   let itemHtml = `
-      <div class="prod-item${depth > 0 ? ' sub-item' : ''}">
+      <div class="prod-item${depth > 0 ? ' sub-item' : ''}" ${pendingActions[p.id] ? 'style="border-style: dashed; opacity: 0.8;"' : ''}>
         <div class="prod-top" style="margin-bottom: 2px;">
           <div style="flex: 1; display: flex; align-items: center;">
             <input 
